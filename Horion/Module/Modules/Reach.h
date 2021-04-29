@@ -1,20 +1,48 @@
-#pragma once
-#include "Module.h"
+#include "Reach.h"
 
-class Reach : public IModule {
-private:
-	float reachValue = 3;
-	float originalReach = 0;
-	float* reachPtr = nullptr;
-	unsigned long oldProtect = 0;
+#include <Windows.h>
+#include "../../../Utils/Logger.h"
+#include "../../../Utils/Utils.h"
 
-public:
-	Reach();
-	~Reach();
+Reach::Reach() : IModule(0, Category::COMBAT, "Increases your reach") {
+	this->registerFloatSetting("Reach Value", &this->reachValue, this->reachValue, 3.f, 7.f);
+}
 
-	// Inherited via IModule
-	virtual const char* getModuleName() override;
-	virtual void onEnable() override;
-	virtual void onDisable() override;
-	virtual void onTick(C_GameMode* gm) override;
-};
+Reach::~Reach() {
+}
+
+const char* Reach::getModuleName() {
+	return ("Reach");
+}
+
+void Reach::onTick(C_GameMode* gm) {
+	if (reachPtr != 0) {
+		*reachPtr = reachValue;
+	}
+}
+
+void Reach::onEnable() {
+	static uintptr_t sigOffset = 0x0;
+	if (sigOffset == 0x0) {
+
+		sigOffset = FindSignature("F3 0F 59 ? ? ? ? ? 80 BE");
+
+		if (sigOffset != 0x0) {
+			int offset = *reinterpret_cast<int*>((sigOffset + 4));  // Get Offset from code
+			reachPtr = reinterpret_cast<float*>(sigOffset + offset + 8);
+			originalReach = *reachPtr;
+		}
+	}
+	if (!VirtualProtect(reachPtr, sizeof(float), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+#ifdef _DEBUG
+		logF("couldnt unprotect memory send help");
+		__debugbreak();
+#endif
+	}
+}
+
+void Reach::onDisable() {
+	*reachPtr = originalReach;
+	if (reachPtr != 0)
+		VirtualProtect(reachPtr, sizeof(float), oldProtect, &oldProtect);
+}
